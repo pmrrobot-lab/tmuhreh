@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>自費療程報到與病歷管理系統</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome 圖示 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Signature Pad -->
+  <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
+  <!-- SheetJS (Excel) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    button, input, select, textarea { touch-action: manipulation; }
+    .signature-container canvas { 
+      width: 100%; 
+      height: 180px; 
+      border: 2px dashed #cbd5e1; 
+      border-radius: 0.75rem; 
+      background: #fafafa; 
+      cursor: crosshair;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 font-sans text-slate-800 antialiased min-h-screen flex flex-col md:flex-row">
+
+  <!-- 離線模式提示條 -->
+  <div id="offline-bar" class="hidden fixed top-0 left-0 right-0 z-50 bg-amber-500 text-white text-xs font-bold py-1.5 px-4 text-center shadow-md">
+    <i class="fa-solid fa-wifi-slash mr-1.5"></i> 目前處於離線狀態，異動將儲存於本地，連線後自動同步
+  </div>
+
+  <!-- 1️⃣ 登入頁面 Modal -->
+  <div id="login-modal" class="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
+      
+      <!-- 🔑 管理員登入入口按鈕 -->
+      <button onclick="openAdminLoginModal()" class="absolute top-4 right-4 flex items-center space-x-1 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg text-xs font-bold border border-amber-200 transition">
+        <i class="fa-solid fa-user-shield"></i>
+        <span>管理員登入</span>
+      </button>
+
+      <div class="text-center mb-6 pt-2">
+        <div class="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-3 text-2xl shadow-inner">
+          <i class="fa-solid fa-hospital-user"></i>
+        </div>
+        <h2 class="text-2xl font-bold text-slate-800">自費療程報到系統</h2>
+        <p class="text-xs text-slate-500 mt-1">請輸入治療師帳號與密碼</p>
+      </div>
+
+      <form id="login-form" onsubmit="handleTherapistLogin(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">帳號 (治療師員編)</label>
+          <input type="text" id="login-account" required placeholder="例如: 958149" class="w-full px-4 py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 text-sm">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">密碼</label>
+          <input type="password" id="login-password" required placeholder="••••••••" class="w-full px-4 py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 text-sm">
+        </div>
+        <button type="submit" class="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 active:scale-95 transition shadow-md">
+          治療師登入
+        </button>
+      </form>
+      
+      <div class="text-center text-xs text-slate-400 mt-4 border-t pt-3">
+        測試治療師帳號：<span class="font-mono text-slate-600 font-bold">958149</span> / 密碼：<span class="font-mono text-slate-600 font-bold">958149</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2️⃣ 管理員驗證 Modal -->
+  <div id="admin-login-modal" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 relative">
+      <button onclick="closeAdminLoginModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600">
+        <i class="fa-solid fa-xmark text-lg"></i>
+      </button>
+      <div class="text-center mb-4">
+        <div class="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-2 text-xl">
+          <i class="fa-solid fa-user-shield"></i>
+        </div>
+        <h3 class="text-lg font-bold text-slate-800">管理員身分驗證</h3>
+        <p class="text-xs text-slate-400">僅限管理員登入以管理帳號與療程</p>
+      </div>
+
+      <form onsubmit="handleAdminLogin(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">管理員帳號</label>
+          <input type="text" id="admin-account" placeholder="admin" required class="w-full px-3 py-2 border rounded-xl text-sm">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">密碼</label>
+          <input type="password" id="admin-password" placeholder="••••••••" required class="w-full px-3 py-2 border rounded-xl text-sm">
+        </div>
+        <button type="submit" class="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-sm shadow transition">
+          進入管理員後台
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 3️⃣ 左側快捷導覽列 -->
+  <aside id="sidebar" class="fixed md:static inset-y-0 left-0 z-40 w-64 bg-slate-900 text-slate-300 transform -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out flex flex-col justify-between shadow-xl">
+    <div>
+      <div class="p-5 border-b border-slate-800 flex justify-between items-center">
+        <div class="flex items-center space-x-3">
+          <div class="w-9 h-9 bg-indigo-600 text-white rounded-xl flex items-center justify-center font-bold">復</div>
+          <div>
+            <h1 class="font-bold text-white text-sm">報到與病歷系統</h1>
+            <p id="current-user-display" class="text-xs text-indigo-400">尚未登入</p>
+          </div>
+        </div>
+        <button onclick="toggleSidebar()" class="md:hidden text-slate-400 hover:text-white">
+          <i class="fa-solid fa-xmark text-xl"></i>
+        </button>
+      </div>
+
+      <nav class="p-4 space-y-1">
+        <a href="#" onclick="switchTab('patient-search')" class="nav-item active flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800 transition">
+          <i class="fa-solid fa-user-check text-indigo-400 w-5"></i>
+          <span>病人查詢與報到</span>
+        </a>
+        <a href="#" onclick="switchTab('calendar-view')" class="nav-item flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800 transition">
+          <i class="fa-solid fa-calendar-days text-emerald-400 w-5"></i>
+          <span>日曆檢視清單</span>
+        </a>
+        <a href="#" onclick="switchTab('export-report')" class="nav-item flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800 transition">
+          <i class="fa-solid fa-file-excel text-amber-400 w-5"></i>
+          <span>Excel 資料匯出</span>
+        </a>
+        
+        <!-- 🔒 管理員後台按鈕 -->
+        <a id="admin-nav-link" href="#" onclick="switchTab('admin-panel')" class="nav-item hidden flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-semibold bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 transition">
+          <i class="fa-solid fa-sliders text-amber-400 w-5"></i>
+          <span>⚙️ 管理員後台</span>
+        </a>
+      </nav>
+    </div>
+
+    <div class="p-4 border-t border-slate-800">
+      <button onclick="logout()" class="w-full py-2.5 px-4 bg-slate-800 hover:bg-red-600/80 text-slate-300 hover:text-white rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2">
+        <i class="fa-solid fa-right-from-bracket"></i>
+        <span>登出並返回</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- 4️⃣ 主要內容區域 -->
+  <main class="flex-1 flex flex-col min-w-0 min-h-screen">
+
+    <header class="md:hidden bg-slate-900 text-white p-4 flex justify-between items-center sticky top-0 z-30 shadow-md">
+      <button onclick="toggleSidebar()" class="text-slate-300 hover:text-white p-1">
+        <i class="fa-solid fa-bars text-xl"></i>
+      </button>
+      <span class="font-bold text-sm">自費療程報到系統</span>
+      <span id="mobile-user-tag" class="text-xs bg-indigo-950 text-indigo-300 px-2.5 py-1 rounded-full font-medium">治療師</span>
+    </header>
+
+    <div class="p-4 md:p-8 max-w-6xl w-full mx-auto space-y-6">
+
+      <!-- TAB 1: 病人查詢與報到 -->
+      <section id="tab-patient-search" class="tab-content space-y-6">
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">快速查詢個案資料</label>
+          <div class="relative">
+            <input type="text" id="patient-search-input" oninput="handlePatientAutocomplete(this.value)" placeholder="輸入姓名或病歷號搜尋..." class="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:bg-white transition">
+            <i class="fa-solid fa-magnifying-glass absolute left-4 top-3.5 text-slate-400"></i>
+            <div id="autocomplete-list" class="hidden absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-20 max-h-60 overflow-y-auto divide-y divide-slate-100"></div>
+          </div>
+        </div>
+
+        <div id="patient-detail-panel" class="hidden space-y-6">
+          <div class="bg-indigo-900 text-white p-6 rounded-2xl shadow-lg flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <div class="flex items-center space-x-3">
+                <h3 id="detail-patient-name" class="text-2xl font-extrabold">--</h3>
+                <span id="detail-chart-no" class="bg-indigo-800 text-indigo-200 text-xs px-3 py-1 rounded-full font-mono">--</span>
+              </div>
+              <p id="detail-patient-note" class="text-xs text-indigo-200 mt-2">備註: 無</p>
+            </div>
+            <button onclick="openTreatmentManageModal()" class="w-full md:w-auto px-4 py-2.5 bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center space-x-2">
+              <i class="fa-solid fa-plus-circle"></i>
+              <span>新增 / 扣減療程堂數</span>
+            </button>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-3">
+            <h4 class="text-sm font-bold text-slate-700 flex items-center justify-between">
+              <span><i class="fa-solid fa-list-check text-indigo-600 mr-2"></i>選擇報到療程</span>
+              <span class="text-xs font-normal text-slate-400">點擊項目展開報到表單</span>
+            </h4>
+            <div id="active-sessions-list" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3"></div>
+          </div>
+
+          <div id="checkin-form-card" class="hidden bg-white p-6 rounded-2xl shadow-md border-2 border-indigo-500 space-y-5">
+            <div class="flex justify-between items-center border-b pb-3">
+              <h4 class="font-bold text-indigo-900 text-base">
+                報到資料填寫：<span id="checkin-target-treatment" class="text-indigo-600">--</span>
+              </h4>
+              <button onclick="closeCheckinForm()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-bold text-slate-600 mb-1">日期時間</label>
+                <input type="datetime-local" id="checkin-datetime" class="w-full p-2.5 border rounded-xl text-sm bg-slate-50">
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-600 mb-1">負責治療師</label>
+                <select id="checkin-therapist-select" class="w-full p-2.5 border rounded-xl text-sm bg-slate-50"></select>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-600 mb-1">本次報到使用堂數</label>
+              <div class="flex items-center space-x-3">
+                <button type="button" onclick="adjustCheckinCount(-1)" class="w-10 h-10 bg-slate-200 rounded-xl font-bold text-lg hover:bg-slate-300">-</button>
+                <input type="number" id="checkin-count-input" value="1" min="1" readonly class="w-16 text-center font-bold text-lg py-1 border rounded-xl bg-white">
+                <button type="button" onclick="adjustCheckinCount(1)" class="w-10 h-10 bg-slate-200 rounded-xl font-bold text-lg hover:bg-slate-300">+</button>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <div>
+                <label class="block text-xs font-bold text-slate-600 mb-1">治療前疼痛 (0-10)</label>
+                <select id="pain-before" class="w-full p-2 border rounded-lg text-xs">
+                  <script>for(let i=0;i<=10;i++) document.write(`<option value="${i}">${i} 分</option>`);</script>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-600 mb-1">治療後疼痛 (0-10)</label>
+                <select id="pain-after" class="w-full p-2 border rounded-lg text-xs">
+                  <script>for(let i=0;i<=10;i++) document.write(`<option value="${i}">${i} 分</option>`);</script>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-600 mb-1">治療反應</label>
+                <select id="treatment-response" class="w-full p-2 border rounded-lg text-xs">
+                  <option value="治療反應好">治療反應好</option>
+                  <option value="一般">一般</option>
+                  <option value="不適合">不適合</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <div class="flex justify-between items-center mb-1">
+                <label class="text-xs font-bold text-slate-600">病人簽名</label>
+                <button type="button" onclick="clearSignature()" class="text-xs text-indigo-600 hover:underline">清除重簽</button>
+              </div>
+              <div class="signature-container">
+                <canvas id="signature-pad-canvas"></canvas>
+              </div>
+            </div>
+
+            <button onclick="submitCheckin()" class="w-full py-3.5 bg-indigo-600 text-white font-bold rounded-xl shadow-lg hover:bg-indigo-700 transition">
+              完成報到並存檔
+            </button>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+            <div class="flex justify-between items-center">
+              <h4 class="text-sm font-bold text-slate-700"><i class="fa-solid fa-clock-rotate-left text-indigo-600 mr-2"></i>報到與異動歷史紀錄</h4>
+              <button id="show-more-records-btn" onclick="toggleAllRecords()" class="text-xs font-bold text-indigo-600 hover:underline">查看更多歷史紀錄</button>
+            </div>
+            <div id="records-list-container" class="space-y-3 divide-y divide-slate-100"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: 日曆檢視清單 -->
+      <section id="tab-calendar-view" class="tab-content hidden space-y-6">
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+          <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <h3 class="font-bold text-slate-800 text-lg"><i class="fa-solid fa-calendar-day text-emerald-500 mr-2"></i>當日 / 特定日期報到清單</h3>
+            <input type="date" id="calendar-date-picker" onchange="renderCalendarList()" class="p-2 border rounded-xl text-sm bg-slate-50 font-bold">
+          </div>
+          <div id="calendar-records-list" class="space-y-3"></div>
+        </div>
+      </section>
+
+      <!-- TAB 3: Excel 資料匯出 -->
+      <section id="tab-export-report" class="tab-content hidden space-y-6">
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-5">
+          <h3 class="font-bold text-slate-800 text-lg"><i class="fa-solid fa-file-export text-amber-500 mr-2"></i>匯出 EXCEL 資料</h3>
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <label class="block text-xs font-bold text-slate-600 mb-1">起始日期</label>
+              <input type="date" id="export-start-date" class="w-full p-2.5 border rounded-xl text-sm">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-600 mb-1">結束日期</label>
+              <input type="date" id="export-end-date" class="w-full p-2.5 border rounded-xl text-sm">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-600 mb-1">治療師</label>
+              <select id="export-therapist-filter" class="w-full p-2.5 border rounded-xl text-sm"></select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-600 mb-1">療程項目</label>
+              <select id="export-treatment-filter" class="w-full p-2.5 border rounded-xl text-sm"></select>
+            </div>
+          </div>
+          <button onclick="exportToExcel()" class="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow transition flex items-center justify-center space-x-2">
+            <i class="fa-solid fa-file-excel text-lg"></i>
+            <span>匯出 Excel 報表</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- TAB 4: 管理員後台面板 -->
+      <section id="tab-admin-panel" class="tab-content hidden space-y-6">
+        <div class="bg-amber-500/10 border border-amber-500/30 p-4 rounded-2xl flex items-center justify-between">
+          <div class="flex items-center space-x-3">
+            <i class="fa-solid fa-user-shield text-amber-600 text-2xl"></i>
+            <div>
+              <h3 class="font-bold text-amber-900 text-sm">管理員後台模式 (權限開放)</h3>
+              <p class="text-xs text-amber-700">可維護治療師登入帳號及修改全域療程清單。</p>
+            </div>
+          </div>
+          <button onclick="switchTab('patient-search')" class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg transition">
+            返回病人查詢
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+            <h4 class="font-bold text-slate-800 text-base flex items-center justify-between">
+              <span><i class="fa-solid fa-users-gear text-indigo-600 mr-2"></i>治療師帳號管理</span>
+            </h4>
+            <form onsubmit="handleAddTherapist(event)" class="space-y-3 bg-slate-50 p-3.5 rounded-xl border">
+              <input type="text" id="new-therapist-id" placeholder="帳號 / 員編 (例: 958149)" required class="w-full p-2 border rounded-lg text-xs">
+              <input type="text" id="new-therapist-name" placeholder="治療師姓名 (例: 胡家甄)" required class="w-full p-2 border rounded-lg text-xs">
+              <input type="password" id="new-therapist-pass" placeholder="設定登入密碼" required class="w-full p-2 border rounded-lg text-xs">
+              <button type="submit" class="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition">新增治療師帳號</button>
+            </form>
+            <div id="therapist-account-list" class="divide-y divide-slate-100 max-h-60 overflow-y-auto"></div>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+            <h4 class="font-bold text-slate-800 text-base">
+              <i class="fa-solid fa-cubes text-indigo-600 mr-2"></i>療程選項管理
+            </h4>
+            <form onsubmit="handleAddTreatmentOption(event)" class="flex gap-2">
+              <input type="text" id="new-treatment-name" placeholder="輸入新療程名稱..." required class="flex-1 p-2 border rounded-lg text-xs">
+              <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold whitespace-nowrap">新增選項</button>
+            </form>
+            <div id="treatment-options-list" class="divide-y divide-slate-100 max-h-60 overflow-y-auto"></div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- MODAL: 新增個案 -->
+  <div id="add-patient-modal" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
+      <h3 class="text-lg font-bold text-slate-800 mb-1">查無此個案資料，是否新增？</h3>
+      <p class="text-xs text-slate-500 mb-4">請輸入資料建立新的個案檔案。</p>
+      <form onsubmit="handleCreatePatient(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">病歷號 *</label>
+          <input type="text" id="new-patient-chart-no" required class="w-full p-2.5 border rounded-xl text-sm">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">姓名 *</label>
+          <input type="text" id="new-patient-name" required class="w-full p-2.5 border rounded-xl text-sm">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">備註欄位</label>
+          <textarea id="new-patient-remark" rows="2" class="w-full p-2.5 border rounded-xl text-sm"></textarea>
+        </div>
+        <div class="flex gap-3 pt-2">
+          <button type="button" onclick="closeAddPatientModal()" class="flex-1 py-2.5 border rounded-xl text-xs font-bold text-slate-600">否 (取消)</button>
+          <button type="submit" class="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow">是 (確認新增)</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: 新增/扣減堂數 -->
+  <div id="treatment-manage-modal" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
+      <div class="flex justify-between items-center mb-4 border-b pb-2">
+        <h3 class="text-base font-bold text-slate-800">新增 / 扣減個案療程堂數</h3>
+        <button onclick="closeTreatmentManageModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <form onsubmit="handleUpdatePatientSession(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">異動日期</label>
+          <input type="date" id="treatment-op-date" required class="w-full p-2.5 border rounded-xl text-sm">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">選擇療程類型</label>
+          <div id="modal-treatment-buttons" class="grid grid-cols-2 gap-2"></div>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">異動堂數 (新增輸入正數，扣減輸入負數)</label>
+          <div class="flex items-center space-x-2">
+            <button type="button" onclick="adjustModalCount(-1)" class="w-10 h-10 bg-slate-200 rounded-xl font-bold">-</button>
+            <input type="number" id="treatment-op-count" value="10" required class="flex-1 text-center py-2 border rounded-xl font-bold">
+            <button type="button" onclick="adjustModalCount(1)" class="w-10 h-10 bg-slate-200 rounded-xl font-bold">+</button>
+          </div>
+        </div>
+        <button type="submit" class="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs shadow">儲存異動</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: 簽名放大預覽 View -->
+  <div id="signature-preview-modal" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4" onclick="closeSignaturePreview()">
+    <div class="bg-white rounded-2xl shadow-2xl p-4 max-w-md w-full relative space-y-3" onclick="event.stopPropagation()">
+      <div class="flex justify-between items-center border-b pb-2">
+        <h4 class="text-sm font-bold text-slate-800">病人簽名原圖預覽</h4>
+        <button onclick="closeSignaturePreview()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="bg-slate-50 border p-2 rounded-xl flex items-center justify-center">
+        <img id="signature-preview-img" src="" alt="簽名放大預覽" class="max-h-60 object-contain">
+      </div>
+      <button onclick="closeSignaturePreview()" class="w-full py-2 bg-slate-800 text-white rounded-xl text-xs font-bold">關閉預覽</button>
+    </div>
+  </div>
+
+  <!-- MODAL: 通用確認防呆框 -->
+  <div id="confirm-modal" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center space-y-4">
+      <div class="w-12 h-12 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto text-xl">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+      </div>
+      <h3 id="confirm-title" class="font-bold text-slate-800 text-base">請確認是否執行？</h3>
+      <p id="confirm-msg" class="text-xs text-slate-500">此動作執行後將無法還原。</p>
+      <div class="flex gap-3 pt-2">
+        <button onclick="closeConfirmModal(false)" class="flex-1 py-2.5 border rounded-xl text-xs font-bold text-slate-600">取消</button>
+        <button onclick="closeConfirmModal(true)" class="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-xs font-bold shadow">確認執行</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentUser = null;
+    let selectedPatient = null;
+    let signaturePad = null;
+    let activeTreatmentForCheckin = null;
+    let confirmResolver = null;
+
+    let appData = {
+      therapists: [
+        { id: "958149", name: "胡家甄", pass: "958149" }
+      ],
+      treatments: ["Lokomat", "Keeogo", "SIS", "反重力跑步機", "PT核心運動"],
+      patients: [
+        {
+          chartNo: "P1001",
+          name: "王小明",
+          remark: "右側偏癱，需加強下肢力量",
+          sessions: { "Lokomat": 8, "SIS": 5 },
+          records: [
+            {
+              id: "REC01",
+              date: "2026-10-23T10:30",
+              treatment: "Lokomat",
+              count: -1,
+              therapist: "胡家甄",
+              painBefore: "4",
+              painAfter: "2",
+              response: "治療反應好",
+              note: "報到扣除 1 堂。完成後剩餘堂數：8 次",
+              signature: "",
+              status: "ACTIVE",
+              type: "CHECKIN"
+            }
+          ]
+        }
+      ]
+    };
+
+    function loadStorage() {
+      const saved = localStorage.getItem("rehab_checkin_app_db");
+      if (saved) {
+        try { appData = JSON.parse(saved); } catch(e){}
+      }
+    }
+
+    function saveStorage() {
+      localStorage.setItem("rehab_checkin_app_db", JSON.stringify(appData));
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      loadStorage();
+      initSignaturePad();
+      setupNetworkListener();
+
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById("calendar-date-picker").value = today;
+      document.getElementById("export-start-date").value = today;
+      document.getElementById("export-end-date").value = today;
+    });
+
+    function initSignaturePad() {
+      const canvas = document.getElementById("signature-pad-canvas");
+      if (!canvas) return;
+
+      signaturePad = new SignaturePad(canvas, { 
+        penColor: "rgb(0, 0, 0)",
+        backgroundColor: "rgb(250, 250, 250)",
+        minWidth: 1.5,
+        maxWidth: 3.5
+      });
+
+      window.addEventListener("resize", resizeCanvas);
+    }
+
+    function resizeCanvas() {
+      const canvas = document.getElementById("signature-pad-canvas");
+      if (!canvas || canvas.offsetWidth === 0) return;
+      
+      const ratio = Math.max(window.devicePixelRatio || 1, 1);
+      canvas.width = canvas.offsetWidth * ratio;
+      canvas.height = canvas.offsetHeight * ratio;
+      canvas.getContext("2d").scale(ratio, ratio);
+      
+      if (signaturePad) {
+        signaturePad.clear();
+      }
+    }
+
+    function clearSignature() {
+      if (signaturePad) signaturePad.clear();
+    }
+
+    function setupNetworkListener() {
+      const bar = document.getElementById("offline-bar");
+      window.addEventListener("offline", () => bar.classList.remove("hidden"));
+      window.addEventListener("online", () => bar.classList.add("hidden"));
+    }
+
+    function handleTherapistLogin(e) {
+      e.preventDefault();
+      const acc = document.getElementById("login-account").value.trim();
+      const pass = document.getElementById("login-password").value.trim();
+
+      const user = appData.therapists.find(t => t.id === acc && t.pass === pass);
+      if (user) {
+        currentUser = { ...user, role: "therapist" };
+        document.getElementById("login-modal").classList.add("hidden");
+        document.getElementById("admin-nav-link").classList.add("hidden");
+        document.getElementById("current-user-display").innerText = `治療師: ${user.name}`;
+        document.getElementById("mobile-user-tag").innerText = user.name;
+        renderTherapistDropdown();
+        switchTab('patient-search');
+        alert(`登入成功！歡迎 ${user.name} 治療師`);
+      } else {
+        alert("帳號或密碼錯誤！");
+      }
+    }
+
+    function openAdminLoginModal() {
+      document.getElementById("admin-login-modal").classList.remove("hidden");
+    }
+
+    function closeAdminLoginModal() {
+      document.getElementById("admin-login-modal").classList.add("hidden");
+    }
+
+    function handleAdminLogin(e) {
+      e.preventDefault();
+      const acc = document.getElementById("admin-account").value.trim();
+      const pass = document.getElementById("admin-password").value.trim();
+
+      if (acc === "admin" && pass === "admin") {
+        currentUser = { id: "admin", name: "系統管理員", role: "admin" };
+        document.getElementById("admin-login-modal").classList.add("hidden");
+        document.getElementById("login-modal").classList.add("hidden");
+        document.getElementById("admin-nav-link").classList.remove("hidden");
+        document.getElementById("current-user-display").innerText = "身分: 管理員";
+        renderAdminLists();
+        switchTab("admin-panel");
+        alert("管理員驗證成功！已解鎖後台管理頁面");
+      } else {
+        alert("管理員帳號或密碼錯誤 (預設: admin / admin)");
+      }
+    }
+
+    function logout() {
+      currentUser = null;
+      document.getElementById("login-modal").classList.remove("hidden");
+      document.getElementById("admin-nav-link").classList.add("hidden");
+      document.getElementById("patient-detail-panel").classList.add("hidden");
+    }
+
+    function toggleSidebar() {
+      document.getElementById("sidebar").classList.toggle("-translate-x-full");
+    }
+
+    function switchTab(tabId) {
+      document.querySelectorAll(".tab-content").forEach(el => el.classList.add("hidden"));
+      document.getElementById(`tab-${tabId}`).classList.remove("hidden");
+
+      if (window.innerWidth < 768) {
+        document.getElementById("sidebar").classList.add("-translate-x-full");
+      }
+
+      if (tabId === 'calendar-view') renderCalendarList();
+      if (tabId === 'export-report') renderExportDropdowns();
+      if (tabId === 'admin-panel') renderAdminLists();
+    }
+
+    function handlePatientAutocomplete(val) {
+      const list = document.getElementById("autocomplete-list");
+      const keyword = val.trim().toLowerCase();
+      
+      if (!keyword) {
+        list.classList.add("hidden");
+        return;
+      }
+
+      const matches = appData.patients.filter(p => 
+        p.name.toLowerCase().includes(keyword) || p.chartNo.toLowerCase().includes(keyword)
+      );
+
+      if (matches.length === 0) {
+        list.innerHTML = `
+          <div class="p-3 text-center text-xs text-slate-500">
+            查無此個案資料，是否新增？ 
+            <button onclick="openAddPatientModal('${keyword}')" class="text-indigo-600 font-bold underline ml-1">點此新增個案</button>
+          </div>
+        `;
+      } else {
+        list.innerHTML = matches.map(p => `
+          <div onclick="selectPatient('${p.chartNo}')" class="p-3 hover:bg-slate-50 cursor-pointer flex justify-between items-center text-sm">
+            <span class="font-bold text-slate-800">${p.name}</span>
+            <span class="text-xs text-slate-400 font-mono">${p.chartNo}</span>
+          </div>
+        `).join('');
+      }
+      list.classList.remove("hidden");
+    }
+
+    function selectPatient(chartNo) {
+      selectedPatient = appData.patients.find(p => p.chartNo === chartNo);
+      document.getElementById("autocomplete-list").classList.add("hidden");
+      document.getElementById("patient-search-input").value = `${selectedPatient.name} (${selectedPatient.chartNo})`;
+      renderPatientDetail();
+    }
+
+    function renderPatientDetail() {
+      if (!selectedPatient) return;
+      document.getElementById("patient-detail-panel").classList.remove("hidden");
+      document.getElementById("detail-patient-name").innerText = selectedPatient.name;
+      document.getElementById("detail-chart-no").innerText = selectedPatient.chartNo;
+      document.getElementById("detail-patient-note").innerText = `備註: ${selectedPatient.remark || '無'}`;
+
+      renderActiveSessions();
+      renderCheckinRecords(false);
+    }
+
+    function renderActiveSessions() {
+      const container = document.getElementById("active-sessions-list");
+      const sessions = selectedPatient.sessions || {};
+
+      const html = Object.keys(sessions).map(treat => {
+        const count = sessions[treat];
+        const isDisabled = count <= 0;
+        return `
+          <div onclick="${isDisabled ? 'alert(\'此療程無剩餘堂數！\')' : `openCheckinForm('${treat}')`}" 
+               class="p-4 rounded-xl border-2 transition ${isDisabled ? 'bg-slate-100 border-slate-200 opacity-50 cursor-not-allowed' : 'bg-white border-indigo-100 hover:border-indigo-500 shadow-sm cursor-pointer active:scale-95'}">
+            <div class="text-xs font-bold text-slate-400 mb-1">可報到療程</div>
+            <div class="text-base font-extrabold text-slate-800">${treat}</div>
+            <div class="mt-2 text-right">
+              <span class="text-xs text-slate-500">剩餘 </span>
+              <span class="text-xl font-black ${isDisabled ? 'text-red-500' : 'text-indigo-600'}">${count}</span>
+              <span class="text-xs text-slate-500"> 次</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      container.innerHTML = html || '<p class="text-xs text-slate-400 col-span-full">尚無療程堂數，請點擊上方按鈕新增。</p>';
+    }
+
+    function openCheckinForm(treatment) {
+      activeTreatmentForCheckin = treatment;
+      document.getElementById("checkin-target-treatment").innerText = treatment;
+      document.getElementById("checkin-form-card").classList.remove("hidden");
+      
+      const now = new Date();
+      now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+      document.getElementById("checkin-datetime").value = now.toISOString().slice(0,16);
+
+      renderTherapistDropdown();
+
+      setTimeout(() => {
+        resizeCanvas();
+        clearSignature();
+      }, 50);
+    }
+
+    function closeCheckinForm() {
+      document.getElementById("checkin-form-card").classList.add("hidden");
+    }
+
+    function adjustCheckinCount(delta) {
+      const input = document.getElementById("checkin-count-input");
+      let val = parseInt(input.value) + delta;
+      const max = selectedPatient.sessions[activeTreatmentForCheckin] || 1;
+      if (val >= 1 && val <= max) input.value = val;
+    }
+
+    function renderTherapistDropdown() {
+      const select = document.getElementById("checkin-therapist-select");
+      select.innerHTML = appData.therapists.map(t => 
+        `<option value="${t.name}" ${currentUser && currentUser.name === t.name ? 'selected' : ''}>${t.name}</option>`
+      ).join('');
+    }
+
+    function submitCheckin() {
+      if (signaturePad.isEmpty()) {
+        alert("請先在簽名板上進行簽名！");
+        return;
+      }
+
+      const count = parseInt(document.getElementById("checkin-count-input").value);
+      const rem = selectedPatient.sessions[activeTreatmentForCheckin];
+
+      if (count > rem) {
+        alert("剩餘堂數不足！");
+        return;
+      }
+
+      selectedPatient.sessions[activeTreatmentForCheckin] -= count;
+      const currentRem = selectedPatient.sessions[activeTreatmentForCheckin];
+
+      const newRecord = {
+        id: "REC" + Date.now(),
+        date: document.getElementById("checkin-datetime").value,
+        treatment: activeTreatmentForCheckin,
+        count: -Math.abs(count),
+        therapist: document.getElementById("checkin-therapist-select").value,
+        painBefore: document.getElementById("pain-before").value,
+        painAfter: document.getElementById("pain-after").value,
+        response: document.getElementById("treatment-response").value,
+        note: `報到扣除 ${count} 堂。完成後剩餘堂數：${currentRem} 次`,
+        signature: signaturePad.toDataURL(),
+        status: "ACTIVE",
+        type: "CHECKIN"
+      };
+
+      selectedPatient.records.unshift(newRecord);
+      saveStorage();
+
+      alert("報到成功！");
+      closeCheckinForm();
+      renderPatientDetail();
+    }
+
+    let showAllRecordsFlag = false;
+
+    // ⭐ 在歷史紀錄中加入「病人簽名小圖」
+    function renderCheckinRecords(showAll) {
+      const container = document.getElementById("records-list-container");
+      const records = selectedPatient.records || [];
+      const displayList = showAll ? records : records.slice(0, 3);
+
+      container.innerHTML = displayList.map(r => {
+        const isCanceled = r.status === "CANCELED";
+        const isOp = r.type === "OP";
+        const formattedCount = r.count > 0 ? `+${r.count}堂` : `${r.count}堂`;
+
+        return `
+          <div class="pt-3 ${isCanceled ? 'opacity-50' : ''}">
+            <div class="flex justify-between items-start text-xs">
+              <div>
+                <span class="font-bold ${isOp ? (r.count > 0 ? 'text-emerald-700' : 'text-amber-700') : 'text-slate-800'} text-sm">
+                  ${isOp ? '【堂數異動】' : ''}${r.treatment} (${formattedCount})
+                </span>
+                <span class="ml-2 text-slate-400">${r.date.replace('T', ' ')}</span>
+                ${isCanceled ? '<span class="ml-2 bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold">已取消</span>' : ''}
+              </div>
+              <div class="space-x-2">
+                ${(!isCanceled && !isOp) ? `<button onclick="cancelRecord('${r.id}')" class="text-red-500 font-bold hover:underline">取消報到</button>` : ''}
+                <button onclick="toggleNoteField('${r.id}')" class="text-indigo-600 font-bold hover:underline">Note</button>
+              </div>
+            </div>
+            
+            ${!isOp ? `
+              <div class="mt-1.5 flex justify-between items-center">
+                <div class="flex flex-wrap gap-2 text-[10px]">
+                  <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded">治療師: ${r.therapist}</span>
+                  <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded">疼痛: ${r.painBefore}分 ➔ ${r.painAfter}分</span>
+                  <span class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold">${r.response}</span>
+                </div>
+                
+                <!-- ⭐ 簽名小圖展示 -->
+                ${r.signature ? `
+                  <div onclick="openSignaturePreview('${r.signature}')" class="cursor-pointer group flex items-center space-x-1 bg-slate-50 hover:bg-indigo-50 border border-slate-200 p-1 rounded-lg transition" title="點擊檢視放大簽名">
+                    <img src="${r.signature}" alt="簽名小圖" class="h-8 max-w-[80px] object-contain border bg-white rounded">
+                    <i class="fa-solid fa-magnifying-glass-plus text-slate-400 group-hover:text-indigo-600 text-xs px-0.5"></i>
+                  </div>
+                ` : ''}
+              </div>
+            ` : ''}
+
+            <div id="note-field-${r.id}" class="${isOp ? 'block mt-1' : 'hidden mt-2'}">
+              <textarea id="note-input-${r.id}" class="w-full p-2 border rounded-xl text-xs bg-slate-50" placeholder="填寫 Note...">${r.note || ''}</textarea>
+              <button onclick="saveNote('${r.id}')" class="mt-1 px-3 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold">儲存 Note</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function openSignaturePreview(dataUrl) {
+      if (!dataUrl) return;
+      document.getElementById("signature-preview-img").src = dataUrl;
+      document.getElementById("signature-preview-modal").classList.remove("hidden");
+    }
+
+    function closeSignaturePreview() {
+      document.getElementById("signature-preview-modal").classList.add("hidden");
+    }
+
+    function toggleAllRecords() {
+      showAllRecordsFlag = !showAllRecordsFlag;
+      renderCheckinRecords(showAllRecordsFlag);
+      document.getElementById("show-more-records-btn").innerText = showAllRecordsFlag ? "收起紀錄" : "查看更多歷史紀錄";
+    }
+
+    async function cancelRecord(recId) {
+      const ok = await showConfirmModal("確定要取消此筆報到嗎？", "取消後將自動將堂數加回。");
+      if (!ok) return;
+
+      const rec = selectedPatient.records.find(r => r.id === recId);
+      if (rec) {
+        rec.status = "CANCELED";
+        const restoredCount = Math.abs(rec.count);
+        selectedPatient.sessions[rec.treatment] = (selectedPatient.sessions[rec.treatment] || 0) + restoredCount;
+        const currentRem = selectedPatient.sessions[rec.treatment];
+        rec.note += `\n[已取消報到，已回補 ${restoredCount} 堂。當前剩餘堂數：${currentRem} 次]`;
+
+        saveStorage();
+        renderPatientDetail();
+        alert("已取消報到並回補堂數！");
+      }
+    }
+
+    function toggleNoteField(recId) {
+      document.getElementById(`note-field-${recId}`).classList.toggle("hidden");
+    }
+
+    function saveNote(recId) {
+      const rec = selectedPatient.records.find(r => r.id === recId);
+      if (rec) {
+        rec.note = document.getElementById(`note-input-${recId}`).value;
+        saveStorage();
+        alert("Note 已更新！");
+      }
+    }
+
+    function openAddPatientModal(keyword) {
+      document.getElementById("add-patient-modal").classList.remove("hidden");
+      document.getElementById("new-patient-name").value = keyword || "";
+    }
+
+    function closeAddPatientModal() {
+      document.getElementById("add-patient-modal").classList.add("hidden");
+    }
+
+    function handleCreatePatient(e) {
+      e.preventDefault();
+      const chartNo = document.getElementById("new-patient-chart-no").value.trim();
+      const name = document.getElementById("new-patient-name").value.trim();
+      const remark = document.getElementById("new-patient-remark").value.trim();
+
+      const newP = { chartNo, name, remark, sessions: {}, records: [] };
+      appData.patients.push(newP);
+      saveStorage();
+
+      closeAddPatientModal();
+      selectPatient(chartNo);
+      alert("個案資料建立成功！");
+    }
+
+    function openTreatmentManageModal() {
+      document.getElementById("treatment-manage-modal").classList.remove("hidden");
+      document.getElementById("treatment-op-date").value = new Date().toISOString().split('T')[0];
+      
+      const container = document.getElementById("modal-treatment-buttons");
+      container.innerHTML = appData.treatments.map(t => `
+        <label class="p-2 border rounded-xl text-xs font-bold text-center cursor-pointer hover:bg-indigo-50 flex items-center justify-center space-x-1">
+          <input type="radio" name="modal-treatment-radio" value="${t}"> <span>${t}</span>
+        </label>
+      `).join('');
+    }
+
+    function closeTreatmentManageModal() {
+      document.getElementById("treatment-manage-modal").classList.add("hidden");
+    }
+
+    function adjustModalCount(delta) {
+      const input = document.getElementById("treatment-op-count");
+      input.value = parseInt(input.value) + delta;
+    }
+
+    async function handleUpdatePatientSession(e) {
+      e.preventDefault();
+      const selectedRadio = document.querySelector('input[name="modal-treatment-radio"]:checked');
+      if (!selectedRadio) {
+        alert("請選擇療程類型！");
+        return;
+      }
+
+      const delta = parseInt(document.getElementById("treatment-op-count").value);
+      if (delta === 0) {
+        alert("異動堂數不能為 0！");
+        return;
+      }
+
+      const treat = selectedRadio.value;
+      const currentSessions = selectedPatient.sessions[treat] || 0;
+
+      if (delta < 0 && Math.abs(delta) > currentSessions) {
+        alert(`🚨 扣減失敗警示！\n\n您輸入要扣減的堂數（${Math.abs(delta)} 堂）已大於目前剩餘堂數（${currentSessions} 堂）。\n請重新調整輸入數量！`);
+        return;
+      }
+
+      if (delta < 0) {
+        const ok = await showConfirmModal("確定要扣除此療程堂數嗎？", `扣除 ${Math.abs(delta)} 堂後將減少剩餘次數。`);
+        if (!ok) return;
+      }
+
+      const opDate = document.getElementById("treatment-op-date").value;
+      
+      selectedPatient.sessions[treat] = currentSessions + delta;
+      const newRem = selectedPatient.sessions[treat];
+
+      const opRecord = {
+        id: "OP" + Date.now(),
+        date: `${opDate}T12:00`,
+        treatment: treat,
+        count: delta,
+        therapist: currentUser ? currentUser.name : "系統管理員",
+        note: `【堂數異動】${delta > 0 ? '新增' : '扣減'} ${Math.abs(delta)} 堂。異動後當前剩餘堂數：${newRem} 次`,
+        status: "ACTIVE",
+        type: "OP"
+      };
+
+      selectedPatient.records.unshift(opRecord);
+      saveStorage();
+
+      closeTreatmentManageModal();
+      renderPatientDetail();
+      alert(`堂數異動成功！${treat} 當前剩餘堂數：${newRem} 次`);
+    }
+
+    function renderCalendarList() {
+      const targetDate = document.getElementById("calendar-date-picker").value;
+      const container = document.getElementById("calendar-records-list");
+      
+      let list = [];
+      appData.patients.forEach(p => {
+        (p.records || []).forEach(r => {
+          if (r.date.startsWith(targetDate)) {
+            list.push({ ...r, patientName: p.name, chartNo: p.chartNo });
+          }
+        });
+      });
+
+      container.innerHTML = list.map(r => `
+        <div class="p-4 bg-slate-50 border rounded-xl flex justify-between items-center text-xs">
+          <div>
+            <span class="font-bold text-slate-800 text-sm">${r.patientName} (${r.chartNo})</span>
+            <span class="ml-2 font-bold text-indigo-600">${r.treatment} (${r.count > 0 ? '+' + r.count : r.count}堂)</span>
+            <div class="text-slate-400 mt-0.5">時間: ${r.date.replace('T', ' ')} | 操作人: ${r.therapist}</div>
+          </div>
+          <span class="px-2.5 py-1 bg-indigo-100 text-indigo-700 font-bold rounded-lg">${r.type === 'OP' ? '堂數異動' : r.response}</span>
+        </div>
+      `).join('');
+
+      if (!list.length) container.innerHTML = '<p class="text-xs text-slate-400">當日無異動與報到紀錄。</p>';
+    }
+
+    function renderExportDropdowns() {
+      const therapistSelect = document.getElementById("export-therapist-filter");
+      therapistSelect.innerHTML = '<option value="ALL">全部治療師</option>' + 
+        appData.therapists.map(t => `<option value="${t.name}">${t.name}</option>`).join('');
+
+      const treatmentSelect = document.getElementById("export-treatment-filter");
+      treatmentSelect.innerHTML = '<option value="ALL">全部療程</option>' + 
+        appData.treatments.map(t => `<option value="${t}">${t}</option>`).join('');
+    }
+
+    function exportToExcel() {
+      const start = document.getElementById("export-start-date").value;
+      const end = document.getElementById("export-end-date").value;
+      const therapistFilter = document.getElementById("export-therapist-filter").value;
+      const treatmentFilter = document.getElementById("export-treatment-filter").value;
+
+      let rows = [];
+      appData.patients.forEach(p => {
+        (p.records || []).forEach(r => {
+          const rDate = r.date.split('T')[0];
+          const matchTherapist = therapistFilter === "ALL" || r.therapist === therapistFilter;
+          const matchTreatment = treatmentFilter === "ALL" || r.treatment === treatmentFilter;
+
+          if (rDate >= start && rDate <= end && matchTherapist && matchTreatment) {
+            rows.push({
+              "日期時間": r.date.replace('T', ' '),
+              "病歷號": p.chartNo,
+              "姓名": p.name,
+              "療程項目": r.treatment,
+              "異動/使用堂數": r.count > 0 ? `+${r.count}` : r.count,
+              "負責治療師": r.therapist,
+              "治療前疼痛": r.painBefore || '-',
+              "治療後疼痛": r.painAfter || '-',
+              "治療反應": r.response || '堂數異動',
+              "Note 備註": r.note || '',
+              "狀態": r.status === "ACTIVE" ? "正常" : "已取消"
+            });
+          }
+        });
+      });
+
+      if (!rows.length) {
+        alert("無符合條件的資料！");
+        return;
+      }
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "紀錄報表");
+      XLSX.writeFile(wb, `復健紀錄報表_${start}_至_${end}.xlsx`);
+    }
+
+    function renderAdminLists() {
+      document.getElementById("therapist-account-list").innerHTML = appData.therapists.map(t => `
+        <div class="py-2.5 flex justify-between items-center text-xs">
+          <div>
+            <span class="font-bold text-slate-800">${t.name}</span>
+            <span class="text-slate-400 font-mono ml-2">(${t.id})</span>
+          </div>
+          <button onclick="deleteTherapist('${t.id}')" class="text-red-500 font-bold hover:underline">刪除帳號</button>
+        </div>
+      `).join('');
+
+      document.getElementById("treatment-options-list").innerHTML = appData.treatments.map(t => `
+        <div class="py-2.5 flex justify-between items-center text-xs">
+          <span class="font-bold text-slate-800">${t}</span>
+          <button onclick="deleteTreatmentOption('${t}')" class="text-red-500 font-bold hover:underline">刪除選項</button>
+        </div>
+      `).join('');
+    }
+
+    function handleAddTherapist(e) {
+      e.preventDefault();
+      const id = document.getElementById("new-therapist-id").value.trim();
+      const name = document.getElementById("new-therapist-name").value.trim();
+      const pass = document.getElementById("new-therapist-pass").value.trim();
+
+      appData.therapists.push({ id, name, pass });
+      saveStorage();
+      renderAdminLists();
+      alert("成功新增治療師帳號！");
+    }
+
+    async function deleteTherapist(id) {
+      const ok = await showConfirmModal("確定要刪除此帳號嗎？", "刪除後該帳號將無法登入系統。");
+      if (ok) {
+        appData.therapists = appData.therapists.filter(t => t.id !== id);
+        saveStorage();
+        renderAdminLists();
+      }
+    }
+
+    function handleAddTreatmentOption(e) {
+      e.preventDefault();
+      const name = document.getElementById("new-treatment-name").value.trim();
+      if (!appData.treatments.includes(name)) {
+        appData.treatments.push(name);
+        saveStorage();
+        renderAdminLists();
+      }
+    }
+
+    async function deleteTreatmentOption(name) {
+      const ok = await showConfirmModal("確定要刪除此療程選項嗎？", "刪除後將無法選擇此療程開單。");
+      if (ok) {
+        appData.treatments = appData.treatments.filter(t => t !== name);
+        saveStorage();
+        renderAdminLists();
+      }
+    }
+
+    function showConfirmModal(title, msg) {
+      document.getElementById("confirm-title").innerText = title;
+      document.getElementById("confirm-msg").innerText = msg;
+      document.getElementById("confirm-modal").classList.remove("hidden");
+      return new Promise(resolve => { confirmResolver = resolve; });
+    }
+
+    function closeConfirmModal(result) {
+      document.getElementById("confirm-modal").classList.add("hidden");
+      if (confirmResolver) confirmResolver(result);
+    }
+  </script>
+</body>
+</html>
